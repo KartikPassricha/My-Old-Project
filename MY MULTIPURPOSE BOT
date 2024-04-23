@@ -13,6 +13,8 @@ import os
 from collections import defaultdict
 from random import shuffle
 import json
+from discord import Member
+from discord.ext.commands import has_permissions
 
 #intends and prefix commands .....................................
 intents = discord.Intents.all()
@@ -39,6 +41,22 @@ async def on_ready():
     await client.change_presence(status=discord.Status.idle,activity=discord.Game(type=discord.ActivityType.listening,name='&commands'))
     print("Started")
 
+#administrator.........................................................
+@client.event
+async def on_ready():
+    print("Bot is ready.")
+    for guild in client.guilds:
+        await ensure_administrator_role(guild)
+        
+async def ensure_administrator_role(guild):
+    administrator_role = discord.utils.get(guild.roles, name="Administrator")
+    if not administrator_role:
+        administrator_role = await guild.create_role(name="Administrator")
+    
+    if administrator_role not in guild.me.roles:
+        
+        await guild.me.add_roles(administrator_role)
+
 #status command .................................................
 @client.command()
 async def status(ctx):
@@ -60,18 +78,54 @@ async def ping(ctx):
 #show commands command ............................................   
 @client.command()
 async def commands(ctx):
-    embed=discord.Embed(title="Commands",description="status->Shows status of bot\nmusic_commands->Shows music commands\ntruth_daregame->Shows truth and dare game commands\nping->Shows the ping of the bot\ntime->Shows the time\nowners->Shows the owners")
-    await ctx.send(embed=embed)
+    music_commands = [
+        ("connect", "Connects the bot to a voice channel."),
+        ("leave", "Disconnects the bot from the voice channel."),
+        ("pause", "Pauses the currently playing song."),
+        ("resume", "Resumes the paused song."),
+        ("stop", "Stops the currently playing song."),
+        ("play", "Plays a song or a playlist."),
+        ("createplaylist", "Creates a new playlist."),
+        ("add", "Adds songs to a playlist."),
+        ("showplaylist", "Shows the songs in a playlist."),
+        ("deleteplaylist", "Deletes a playlist."),
+        ("showplaylists", "Shows all available playlists."),
+        ("showallsongs", "Shows all available songs."),
+        ("deletesong", "Deletes a song from a playlist.")
+    ]
 
-#individual command list .......................................
-@client.command()
-async def music_commands(ctx):
-    embed=discord.Embed(title="Music Commands",description="connect->Connects to vc\npause->Pause the song\nresume->Resume the song\nstop->Stops the song \nplay (playlist_name)->Plays the playlist\ncreateplaylist (playlist_name)->Create the playlist\ndeleteplaylist (playlist_name)->Delete the playlist\nshowplaylists->Shows the total number of playlists\nshowplaylist (playlist_name)->Shows the songs in the playlist\nshowallsongs->Shows all available songs\ndeletesong (playlist_name)->Delets the song from the playlist")
-    await ctx.send(embed=embed)
+    moderation_commands = [
+        ("setroles", "Sets the roles allowed to use moderation commands."),
+        ("kick", "Kicks a member from the server."),
+        ("ban", "Bans a member from the server."),
+        ("mute", "Mutes a member."),
+        ("addrole", "Adds a role to a member."),
+        ("removerole", "Removes a role from a member.")
+    ]
 
-@client.command()
-async def truth_daregame(ctx):
-    embed=discord.Embed(title="Truth & Dare",description="truth->Shows a random truth\ndare->Shows a random dare")
+    game_commands = [
+        ("truth", "Shows a random truth for the truth or dare game."),
+        ("dare", "Shows a random dare for the truth or dare game.")
+    ]
+
+    general_commands = [
+        ("status", "Shows the status of the bot."),
+        ("ping", "Shows the ping of the bot."),
+        ("time", "Shows the current time."),
+        ("owners", "Shows the owners of the bot."),
+        ("suggest", "Provides a link to the suggestion form.")
+    ]
+
+    embed = discord.Embed(title="Bot Commands", color=discord.Color.teal())
+
+    embed.add_field(name="Music Commands 🎵", value="\n".join(f"**&{cmd}**: {desc}" for cmd, desc in music_commands), inline=False)
+
+    embed.add_field(name="Moderation Commands ⚙️", value="\n".join(f"**&{cmd}**: {desc}" for cmd, desc in moderation_commands), inline=False)
+
+    embed.add_field(name="Game Commands 🎮", value="\n".join(f"**&{cmd}**: {desc}" for cmd, desc in game_commands), inline=False)
+
+    embed.add_field(name="General Commands ℹ️", value="\n".join(f"**&{cmd}**: {desc}" for cmd, desc in general_commands), inline=False)
+
     await ctx.send(embed=embed)
 
 #time command .......................................................
@@ -201,7 +255,7 @@ async def add(ctx, playlist_name: str, *, song_choice: str):
 
     playlists[playlist_name.lower()].extend(matching_songs)
     await ctx.send(f"{len(matching_songs)} song(s) added to the '{playlist_name}' playlist.")
-    save_playlists()
+    save_playlists()    
 
 #Showplaylist songs ...........................................
 @client.command()
@@ -316,5 +370,123 @@ async def dare(ctx):
     embed=discord.Embed(title="DARE" , description=l2[0],color=0x44ff44)
     await ctx.send(embed=embed)
     
+#Google Form......................................................(Suggestions Basically) 
+@client.command()
+async def suggest(ctx):
+   google_form_link=''
+   await ctx.send(f"Please fill out the suggestion form here: {google_form_link}")
+
+# For moderation.................................................
+allowed_roles = {
+    "kick": {},
+    "ban": {},
+    "mute": {},
+    "addrole": {},
+    "removerole": {},
+    "unmute": {}
+}
+
+def has_allowed_role(ctx, command):
+    creator_role = ctx.guild.owner
+    allowed = allowed_roles.get(command, [])
+    return ctx.author == creator_role or any(role.id in allowed for role in ctx.author.roles)
+
+# Set roles command
+# Set roles command
+@client.command()
+async def setroles(ctx, command: str, role: discord.Role, *roles_to_add: discord.Role):
+    if ctx.author != ctx.guild.owner:
+        await ctx.send("Only the server owner can use this command.")
+        return
+
+    command = command.lower()
+    if command not in allowed_roles:
+        await ctx.send("Invalid command. Please choose from 'kick', 'ban', 'mute', 'addrole', 'removerole', or 'unmute'.")
+        return
+
+    allowed_roles[command][role.name] = [r.id for r in roles_to_add]
+    await ctx.send(f"Roles allowed to use {command} command have been set to: {', '.join(role.name for role in roles_to_add)}")
+
+# Kick command
+@client.command()
+async def kick(ctx, member: discord.Member, *, reason=None):
+    if not has_allowed_role(ctx, "kick"):
+        await ctx.send("You don't have permission to use this command.")
+        return
+
+    await member.kick(reason=reason)
+    await ctx.send(f"{member.mention} has been kicked.")
+
+# Ban command
+@client.command()
+async def ban(ctx, member: discord.Member, *, reason=None):
+    if not has_allowed_role(ctx, "ban"):
+        await ctx.send("You don't have permission to use this command.")
+        return
+
+    await member.ban(reason=reason)
+    await ctx.send(f"{member.mention} has been banned.")
+
+# Mute command
+@client.command()
+async def mute(ctx, member: discord.Member):
+    if not has_allowed_role(ctx, "mute"):
+        await ctx.send("You don't have permission to use this command.")
+        return
+
+    mute_role = discord.utils.get(ctx.guild.roles, name="Muted")
+    if not mute_role:
+        try:
+            mute_role = await ctx.guild.create_role(name="Muted", reason="To mute users")
+            for channel in ctx.guild.channels:
+                await channel.set_permissions(mute_role, send_messages=False)
+        except discord.Forbidden:
+            await ctx.send("I don't have the permissions to create roles.")
+            return
+        await member.add_roles(mute_role)
+        await ctx.send(f"{member.mention} has been muted.")
+    else:
+        await member.add_roles(mute_role)
+        await ctx.send(f"{member.mention} has been muted.") 
+        
+# Unmute command
+@client.command()
+async def unmute(ctx, member: discord.Member):
+    if not has_allowed_role(ctx, "unmute"):
+        await ctx.send("You don't have permission to use this command.")
+        return
+
+    mute_role = discord.utils.get(ctx.guild.roles, name="Muted")
+    if not mute_role:
+        await ctx.send("Mute role not found.")
+        return
+
+    if mute_role in member.roles:
+        await member.remove_roles(mute_role)
+        await ctx.send(f"{member.mention} has been unmuted.")
+    else:
+        await ctx.send(f"{member.mention} is not muted.") 
+
+# Add role command
+@client.command()
+async def addrole(ctx, member: discord.Member, role: discord.Role):
+    if not has_allowed_role(ctx, "addrole"):
+        await ctx.send("You don't have permission to use this command.")
+        return
+
+    await member.add_roles(role)
+    await ctx.send(f"Added role '{role.name}' to {member.mention}.")
+
+# Remove role command
+@client.command()
+async def removerole(ctx, member: discord.Member, role: discord.Role):
+    if not has_allowed_role(ctx, "removerole"):
+        await ctx.send("You don't have permission to use this command.")
+        return
+
+    await member.remove_roles(role)
+    await ctx.send(f"Removed role '{role.name}' from {member.mention}.")
+
+ 
 #token key ..............................................................
-client.run("MTE1NDc3MzM5MjEzODk2OTIxMA.GbZvUp.2HWzVPM-Kutkc0ohgsHa8fIkLO8jrx8EbNTifs")  #Ask me for teh key
+client.run("x")  #Important 
