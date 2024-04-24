@@ -15,6 +15,8 @@ from random import shuffle
 import json
 from discord import Member
 from discord.ext.commands import has_permissions
+import asyncio
+import re
 
 #intends and prefix commands .....................................
 intents = discord.Intents.all()
@@ -79,41 +81,44 @@ async def ping(ctx):
 @client.command()
 async def commands(ctx):
     music_commands = [
-        ("connect", "Connects the bot to a voice channel."),
-        ("leave", "Disconnects the bot from the voice channel."),
-        ("pause", "Pauses the currently playing song."),
-        ("resume", "Resumes the paused song."),
-        ("stop", "Stops the currently playing song."),
-        ("play", "Plays a song or a playlist."),
-        ("createplaylist", "Creates a new playlist."),
-        ("add", "Adds songs to a playlist."),
-        ("showplaylist", "Shows the songs in a playlist."),
-        ("deleteplaylist", "Deletes a playlist."),
-        ("showplaylists", "Shows all available playlists."),
-        ("showallsongs", "Shows all available songs."),
-        ("deletesong", "Deletes a song from a playlist.")
+        ("connect", "Connects the bot to a voice channel. Syntax: `&connect`"),
+        ("leave", "Disconnects the bot from the voice channel. Syntax: `&leave`"),
+        ("pause", "Pauses the currently playing song. Syntax: `&pause`"),
+        ("resume", "Resumes the paused song. Syntax: `&resume`"),
+        ("stop", "Stops the currently playing song. Syntax: `&stop`"),
+        ("play", "Plays a song or a playlist. Syntax: `&play [playlist_name] [song_number]`"),
+        ("createplaylist", "Creates a new playlist. Syntax: `&createplaylist [playlist_name]`"),
+        ("add", "Adds songs to a playlist. Syntax: `&add [playlist_name] [song_choice]`"),
+        ("showplaylist", "Shows the songs in a playlist. Syntax: `&showplaylist [playlist_name]`"),
+        ("deleteplaylist", "Deletes a playlist. Syntax: `&deleteplaylist [playlist_name]`"),
+        ("showplaylists", "Shows all available playlists. Syntax: `&showplaylists`"),
+        ("showallsongs", "Shows all available songs. Syntax: `&showallsongs`"),
+        ("deletesong", "Deletes a song from a playlist. Syntax: `&deletesong [playlist_name] [song_number]`")
     ]
 
     moderation_commands = [
-        ("setroles", "Sets the roles allowed to use moderation commands."),
-        ("kick", "Kicks a member from the server."),
-        ("ban", "Bans a member from the server."),
-        ("mute", "Mutes a member."),
-        ("addrole", "Adds a role to a member."),
-        ("removerole", "Removes a role from a member.")
+        ("setroles", "Sets the roles allowed to use moderation commands. Syntax: `&setroles [command] [role] [roles_to_add]`"),
+        ("kick", "Kicks a member from the server. Syntax: `&kick [member] [reason]`"),
+        ("ban", "Bans a member from the server. Syntax: `&ban [member] [reason]`"),
+        ("mute", "Mutes a member. Syntax: `&mute [member]`"),
+        ("addrole", "Adds a role to a member. Syntax: `&addrole [member] [role]`"),
+        ("removerole", "Removes a role from a member. Syntax: `&removerole [member] [role]`"),
+        ("unmute", "Unmutes a member. Syntax: `&unmute [member]`"),
+        ("add_banned_word", "Adds a word to the banned words list. Syntax: `&add_banned_word [word]`"),
+        ("remove_banned_word", "Removes a word from the banned words list. Syntax: `&remove_banned_word [word]`")
     ]
 
     game_commands = [
-        ("truth", "Shows a random truth for the truth or dare game."),
-        ("dare", "Shows a random dare for the truth or dare game.")
+        ("truth", "Shows a random truth for the truth or dare game. Syntax: `&truth`"),
+        ("dare", "Shows a random dare for the truth or dare game. Syntax: `&dare`")
     ]
 
     general_commands = [
-        ("status", "Shows the status of the bot."),
-        ("ping", "Shows the ping of the bot."),
-        ("time", "Shows the current time."),
-        ("owners", "Shows the owners of the bot."),
-        ("suggest", "Provides a link to the suggestion form.")
+        ("status", "Shows the status of the bot. Syntax: `&status`"),
+        ("ping", "Shows the ping of the bot. Syntax: `&ping`"),
+        ("time", "Shows the current time. Syntax: `&time`"),
+        ("owners", "Shows the owners of the bot. Syntax: `&owners`"),
+        ("suggest", "Provides a link to the suggestion form. Syntax: `&suggest`")
     ]
 
     embed = discord.Embed(title="Bot Commands", color=discord.Color.teal())
@@ -392,7 +397,6 @@ def has_allowed_role(ctx, command):
     return ctx.author == creator_role or any(role.id in allowed for role in ctx.author.roles)
 
 # Set roles command
-# Set roles command
 @client.command()
 async def setroles(ctx, command: str, role: discord.Role, *roles_to_add: discord.Role):
     if ctx.author != ctx.guild.owner:
@@ -414,8 +418,12 @@ async def kick(ctx, member: discord.Member, *, reason=None):
         await ctx.send("You don't have permission to use this command.")
         return
 
+    if reason is None:
+        await ctx.send("Please provide a reason for kicking the member.")
+        return
+
     await member.kick(reason=reason)
-    await ctx.send(f"{member.mention} has been kicked.")
+    await ctx.send(f"{member.mention} has been kicked from the server. Reason: {reason}")
 
 # Ban command
 @client.command()
@@ -424,14 +432,23 @@ async def ban(ctx, member: discord.Member, *, reason=None):
         await ctx.send("You don't have permission to use this command.")
         return
 
+    if reason is None:
+        await ctx.send("Please provide a reason for banning the member.")
+        return
+
     await member.ban(reason=reason)
-    await ctx.send(f"{member.mention} has been banned.")
+    await ctx.send(f"{member.mention} has been banned from the server. Reason: {reason}")
 
 # Mute command
+# Mute command
 @client.command()
-async def mute(ctx, member: discord.Member):
+async def mute(ctx, member: discord.Member, duration: int, time_unit: str, *, reason=None):
     if not has_allowed_role(ctx, "mute"):
         await ctx.send("You don't have permission to use this command.")
+        return
+
+    if reason is None:
+        await ctx.send("Please provide a reason for muting the member.")
         return
 
     mute_role = discord.utils.get(ctx.guild.roles, name="Muted")
@@ -444,10 +461,28 @@ async def mute(ctx, member: discord.Member):
             await ctx.send("I don't have the permissions to create roles.")
             return
         await member.add_roles(mute_role)
-        await ctx.send(f"{member.mention} has been muted.")
+        await ctx.send(f"{member.mention} has been muted for {duration} {time_unit}. Reason: {reason}")
+        await asyncio.sleep(convert_to_seconds(duration, time_unit))
+        await member.remove_roles(mute_role)
+        await ctx.send(f"{member.mention} has been unmuted after {duration} {time_unit}.")
     else:
         await member.add_roles(mute_role)
-        await ctx.send(f"{member.mention} has been muted.") 
+        await ctx.send(f"{member.mention} has been muted for {duration} {time_unit}. Reason: {reason}")
+        await asyncio.sleep(convert_to_seconds(duration, time_unit))
+        await member.remove_roles(mute_role)
+        await ctx.send(f"{member.mention} has been unmuted after {duration} {time_unit}.")
+
+def convert_to_seconds(duration, time_unit):
+    if time_unit.lower() == "seconds":
+        return duration
+    elif time_unit.lower() == "minutes":
+        return duration * 60
+    elif time_unit.lower() == "hours":
+        return duration * 3600
+    elif time_unit.lower() == "days":
+        return duration * 86400
+    else:
+        raise ValueError("Invalid time unit. Please use 'seconds', 'minutes', 'hours', or 'days'.")
         
 # Unmute command
 @client.command()
@@ -487,6 +522,75 @@ async def removerole(ctx, member: discord.Member, role: discord.Role):
     await member.remove_roles(role)
     await ctx.send(f"Removed role '{role.name}' from {member.mention}.")
 
- 
+# Load banned words from a file
+def load_banned_words():
+    try:
+        with open("banned_words.json", "r") as file:
+            return json.load(file)
+    except FileNotFoundError:
+        return {}
+
+# Save banned words to a file
+def save_banned_words(banned_words):
+    with open("banned_words.json", "w") as file:
+        json.dump(banned_words, file)
+
+banned_words_per_guild = load_banned_words()
+
+# Modify contains_banned_word function to use banned_words_per_guild
+def contains_banned_word(message_content, guild_id):
+    banned_words = banned_words_per_guild.get(str(guild_id), [])
+    for word in banned_words:
+        if re.search(r'\b' + re.escape(word) + r'\b', message_content, re.IGNORECASE):
+            return True
+    return False
+
+# Modify add_banned_word command to save to file
+@client.command()
+async def add_banned_word(ctx, word):
+    if ctx.author.guild_permissions.administrator:
+        guild_id = ctx.guild.id
+        if str(guild_id) not in banned_words_per_guild:
+            banned_words_per_guild[str(guild_id)] = []
+        banned_words_per_guild[str(guild_id)].append(word.lower())
+        save_banned_words(banned_words_per_guild)
+        await ctx.send(f"'{word}' has been added to the banned words list.")
+    else:
+        await ctx.send("You don't have permission to use this command.")
+
+# Modify remove_banned_word command to save to file
+@client.command()
+async def remove_banned_word(ctx, word):
+    if ctx.author.guild_permissions.administrator:
+        guild_id = ctx.guild.id
+        banned_words = banned_words_per_guild.get(str(guild_id), [])
+        if word.lower() in banned_words:
+            banned_words.remove(word.lower())
+            banned_words_per_guild[str(guild_id)] = banned_words
+            save_banned_words(banned_words_per_guild)
+            await ctx.send(f"'{word}' has been removed from the banned words list.")
+        else:
+            await ctx.send(f"'{word}' is not in the banned words list.")
+    else:
+        await ctx.send("You don't have permission to use this command.")
+
+# Ensure banned_words_per_guild is saved when the bot shuts down
+@client.event
+async def on_disconnect():
+    save_banned_words(banned_words_per_guild)
+
+@client.event
+async def on_message(message):
+
+    if message.author == client.user:
+        return
+
+    guild_id = message.guild.id
+    if contains_banned_word(message.content, guild_id):
+        await message.delete()
+        await message.channel.send(f"{message.author.mention} Watch your language! That's not allowed. :x: ")
+
+    await client.process_commands(message)
+
 #token key ..............................................................
-client.run("x")  #Important 
+client.run("c")  #Important 
