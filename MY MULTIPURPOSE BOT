@@ -1,6 +1,3 @@
-#This code has been created by Kartik The Great
-#in honour of himself being the singlest person alive
-
 import discord
 from discord.ext import commands
 from time import time
@@ -97,52 +94,80 @@ async def commands(ctx):
         ("pause", "Pauses the currently playing song. Syntax: `&pause`"),
         ("resume", "Resumes the paused song. Syntax: `&resume`"),
         ("stop", "Stops the currently playing song. Syntax: `&stop`"),
-        ("play", "Plays a song or a playlist. Syntax: `&play [playlist_name] [song_number]`"),
-        ("createplaylist", "Creates a new playlist. Syntax: `&createplaylist [playlist_name]`"),
-        ("add", "Adds songs to a playlist. Syntax: `&add [playlist_name] [song_choice]`"),
-        ("showplaylist", "Shows the songs in a playlist. Syntax: `&showplaylist [playlist_name]`"),
-        ("deleteplaylist", "Deletes a playlist. Syntax: `&deleteplaylist [playlist_name]`"),
-        ("showplaylists", "Shows all available playlists. Syntax: `&showplaylists`"),
+        ("play", "Plays a song or playlist. Syntax: `&play [playlist] [song_no]`"),
+        ("createplaylist", "Creates a new playlist. Syntax: `&createplaylist [name]`"),
+        ("add", "Adds songs to a playlist. Syntax: `&add [playlist] [song_choice]`"),
+        ("showplaylist", "Shows the songs in a playlist. Syntax: `&showplaylist [name]`"),
+        ("deleteplaylist", "Deletes a playlist. Syntax: `&deleteplaylist [name]`"),
+        ("showplaylists", "Shows all playlists. Syntax: `&showplaylists`"),
         ("showallsongs", "Shows all available songs. Syntax: `&showallsongs`"),
-        ("deletesong", "Deletes a song from a playlist. Syntax: `&deletesong [playlist_name] [song_number]`")
+        ("deletesong", "Deletes a song. Syntax: `&deletesong [playlist] [song_no]`")
     ]
 
     moderation_commands = [
-        ("setroles", "Sets the roles allowed to use moderation commands. Syntax: `&setroles [command] [role] [roles_to_add]`"),
-        ("kick", "Kicks a member from the server. Syntax: `&kick [member] [reason]`"),
-        ("ban", "Bans a member from the server. Syntax: `&ban [member] [reason]`"),
+        ("setroles", "Sets roles allowed for commands. Syntax: `&setroles [cmd] [role]`"),
+        ("kick", "Kicks a member. Syntax: `&kick [member] [reason]`"),
+        ("ban", "Bans a member. Syntax: `&ban [member] [reason]`"),
         ("mute", "Mutes a member. Syntax: `&mute [member]`"),
-        ("addrole", "Adds a role to a member. Syntax: `&addrole [member] [role]`"),
-        ("removerole", "Removes a role from a member. Syntax: `&removerole [member] [role]`"),
         ("unmute", "Unmutes a member. Syntax: `&unmute [member]`"),
-        ("add_banned_word", "Adds a word to the banned words list. Syntax: `&add_banned_word [word]`"),
-        ("remove_banned_word", "Removes a word from the banned words list. Syntax: `&remove_banned_word [word]`")
+        ("addrole", "Adds a role. Syntax: `&addrole [member] [role]`"),
+        ("removerole", "Removes a role. Syntax: `&removerole [member] [role]`"),
+        ("add_banned_word", "Adds a banned word. Syntax: `&add_banned_word [word]`"),
+        ("remove_banned_word", "Removes a banned word. Syntax: `&remove_banned_word [word]`")
     ]
 
     game_commands = [
-        ("truth", "Shows a random truth for the truth or dare game. Syntax: `&truth`"),
-        ("dare", "Shows a random dare for the truth or dare game. Syntax: `&dare`")
+        ("truth", "Random truth. Syntax: `&truth`"),
+        ("dare", "Random dare. Syntax: `&dare`")
     ]
 
     general_commands = [
-        ("status", "Shows the status of the bot. Syntax: `&status`"),
-        ("ping", "Shows the ping of the bot. Syntax: `&ping`"),
-        ("time", "Shows the current time. Syntax: `&time`"),
-        ("owners", "Shows the owners of the bot. Syntax: `&owners`"),
-        ("suggest", "Provides a link to the suggestion form. Syntax: `&suggest`")
+        ("status", "Shows bot status. Syntax: `&status`"),
+        ("ping", "Shows ping. Syntax: `&ping`"),
+        ("time", "Shows time. Syntax: `&time`"),
+        ("owners", "Shows bot owners. Syntax: `&owners`"),
+        ("suggest", "Gives suggestion form. Syntax: `&suggest`")
     ]
 
-    embed = discord.Embed(title="Bot Commands", color=discord.Color.teal())
+    embed = discord.Embed(
+        title="🤖 Bot Command List",
+        description="Here are all my available commands, grouped by category:",
+        color=discord.Color.teal()
+    )
 
-    embed.add_field(name="Music Commands 🎵", value="\n".join(f"**&{cmd}**: {desc}" for cmd, desc in music_commands), inline=False)
+    embed.set_thumbnail(url=client.user.avatar.url if client.user.avatar else None)
+    embed.set_footer(text=f"Requested by {ctx.author}", icon_url=ctx.author.avatar.url)
 
-    embed.add_field(name="Moderation Commands ⚙️", value="\n".join(f"**&{cmd}**: {desc}" for cmd, desc in moderation_commands), inline=False)
+    # Music Commands
+    embed.add_field(
+        name="🎵 Music Commands",
+        value="\n".join(f"**`&{cmd}`** — {desc}" for cmd, desc in music_commands),
+        inline=False
+    )
 
-    embed.add_field(name="Game Commands 🎮", value="\n".join(f"**&{cmd}**: {desc}" for cmd, desc in game_commands), inline=False)
+    # Moderation Commands
+    embed.add_field(
+        name="⚙️ Moderation Commands",
+        value="\n".join(f"**`&{cmd}`** — {desc}" for cmd, desc in moderation_commands),
+        inline=False
+    )
 
-    embed.add_field(name="General Commands ℹ️", value="\n".join(f"**&{cmd}**: {desc}" for cmd, desc in general_commands), inline=False)
+    # Game Commands
+    embed.add_field(
+        name="🎮 Game Commands",
+        value="\n".join(f"**`&{cmd}`** — {desc}" for cmd, desc in game_commands),
+        inline=False
+    )
+
+    # General Commands
+    embed.add_field(
+        name="ℹ️ General Commands",
+        value="\n".join(f"**`&{cmd}`** — {desc}" for cmd, desc in general_commands),
+        inline=False
+    )
 
     await ctx.send(embed=embed)
+
 
 #time command .......................................................
 @client.command()
@@ -153,7 +178,7 @@ async def time(ctx):
 #owners command ...................................................
 @client.command()
 async def owners(ctx):
-    await ctx.send("This is an initiative set by amateurs\n1.Urvashi Yadav(Leader)\n2.Kartik Passricha\n3.Parth Batra\n4.Swastik Prakash")     
+    await ctx.send("This is an initiative set by amateurs.")     
 
 #connect command .....................................................
 @client.command(pass_context=True)
@@ -596,4 +621,4 @@ async def on_message(message):
 
     await client.process_commands(message)
     
-client.run("MTE1NDc3MzM5MjEzODk2OTIxMA.GNo54z.K6fYIVMmJ-RDG5OEOCTJeuHAjz5dQGK13psCOc")  #Important 
+client.run("MTE1NDc3MzM5MjEzODk2OTIxMA.GD5_PV.pYjce5iwJtDxC9L4te53qxq7L6-HFJYbWBEgw8")  #Important 
