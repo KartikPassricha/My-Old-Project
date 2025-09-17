@@ -1,12 +1,6 @@
 import discord
 from discord.ext import commands
 from time import time
-import youtube_dl
-from pytube import YouTube
-from youtube_dl import YoutubeDL
-from youtubesearchpython import VideosSearch
-import yt_dlp
-import datetime
 import random
 import os
 from collections import defaultdict
@@ -20,41 +14,63 @@ from discord.utils import get
 import requests
 from discord import TextChannel
 from datetime import datetime
-import gpt_2_simple as gpt2
 from discord.ext.commands import has_permissions as has_perms
-import openai
 from flask import Flask
 import requests
+import yt_dlp as youtube_dl
 
 #intends and prefix commands .....................................
 intents = discord.Intents.all()
 client=commands.Bot(command_prefix ='&',intents=intents)
-songs_folder = "Songs"
-playlists = defaultdict(list)
-current_song_index = defaultdict(int)
-playlist_file = "playlists.json"
+intents.message_content = True
+youtube_dl.utils.bug_reports_message = lambda *a, **k: ""
 
-#playlist in json file....................................
-if os.path.isfile(playlist_file):
-    with open(playlist_file, "r") as file:
-        saved_playlists = json.load(file)
-        playlists.update(saved_playlists)
+#music setup......................................................
+ytdl_format_options = {
+    "format": "bestaudio/best",
+    "outtmpl": "%(extractor)s-%(id)s-%(title)s.%(ext)s",
+    "restrictfilenames": True,
+    "noplaylist": True,
+    "nocheckcertificate": True,
+    "ignoreerrors": False,
+    "quiet": True,
+    "no_warnings": True,
+    "default_search": "ytsearch",
+    "source_address": "0.0.0.0"
+}
 
-#save playlist ...................................
-def save_playlists():
-    with open(playlist_file, "w") as file:
-        json.dump(playlists, file)
+ffmpeg_options = {
+    "options": "-vn"
+}
 
-#showing that the bot has started..................................
-@client.event
-async def on_ready():
-    await client.change_presence(status=discord.Status.idle,activity=discord.Game(type=discord.ActivityType.listening,name='&commands'))
-    print("Started")
+ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
+
+
+class YTDLSource(discord.PCMVolumeTransformer):
+    def __init__(self, source, *, data, volume=0.5):
+        super().__init__(source, volume)
+        self.data = data
+        self.title = data.get("title")
+
+    @classmethod
+    async def from_url(cls, url, *, loop=None, stream=False):
+        loop = loop or asyncio.get_event_loop()
+        data = await loop.run_in_executor(
+            None, lambda: ytdl.extract_info(url, download=not stream)
+        )
+
+        if "entries" in data:
+            data = data["entries"][0]
+
+        filename = data["url"] if stream else ytdl.prepare_filename(data)
+        return cls(discord.FFmpegPCMAudio(filename, **ffmpeg_options), data=data)
 
 #administrator.........................................................
 @client.event
 async def on_ready():
     print("Bot is ready.")
+    activity=discord.Game("&help")
+    await client.change_presence(status=discord.Status.online,activity=activity)
     for guild in client.guilds:
         await ensure_administrator_role(guild)
         
@@ -66,11 +82,23 @@ async def ensure_administrator_role(guild):
     if administrator_role not in guild.me.roles:
         
         await guild.me.add_roles(administrator_role)
+        
+# Unknown Commands..............................................
+@client.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.CommandNotFound):
+        await ctx.send(f"❌ Command not found! Use `&help` to see the available ones.")
+    else:
+        raise error
 
 #status command .................................................
 @client.command()
 async def status(ctx):
-    await ctx.send("This bot is under construction . Please wait patiently")
+    await ctx.send("Basic Commands : ✅\n"
+                   "Moderation Commands : ✅\n "
+                   "Game Commands : ✅\n"
+                   "Music Commands : ✅\n"
+                   "AI Chatbot : ❌\n")
 
 #ping command............................................
 @client.command()
@@ -86,29 +114,23 @@ async def ping(ctx):
     await ctx.send(embed=embed)
 
 #show commands command ............................................   
+client.remove_command("help")
 @client.command()
-async def commands(ctx):
-    music_commands = [
-        ("connect", "Connects the bot to a voice channel. Syntax: `&connect`"),
-        ("leave", "Disconnects the bot from the voice channel. Syntax: `&leave`"),
-        ("pause", "Pauses the currently playing song. Syntax: `&pause`"),
-        ("resume", "Resumes the paused song. Syntax: `&resume`"),
-        ("stop", "Stops the currently playing song. Syntax: `&stop`"),
-        ("play", "Plays a song or playlist. Syntax: `&play [playlist] [song_no]`"),
-        ("createplaylist", "Creates a new playlist. Syntax: `&createplaylist [name]`"),
-        ("add", "Adds songs to a playlist. Syntax: `&add [playlist] [song_choice]`"),
-        ("showplaylist", "Shows the songs in a playlist. Syntax: `&showplaylist [name]`"),
-        ("deleteplaylist", "Deletes a playlist. Syntax: `&deleteplaylist [name]`"),
-        ("showplaylists", "Shows all playlists. Syntax: `&showplaylists`"),
-        ("showallsongs", "Shows all available songs. Syntax: `&showallsongs`"),
-        ("deletesong", "Deletes a song. Syntax: `&deletesong [playlist] [song_no]`")
+async def help(ctx):
+
+    music_commands =[
+        ("join" , "Joins to the VC joined by the user. Syntax: `&join`"),
+        ("play" , "Joins to the VC joined by the user. Syntax: `&play [song_name]`"),
+        ("pause" , "Joins to the VC joined by the user. Syntax: `&pause`"),
+        ("resume" , "Joins to the VC joined by the user. Syntax: `&resume`"),
+        ("stop" , "Joins to the VC joined by the user. Syntax: `&stop`")
     ]
 
     moderation_commands = [
         ("setroles", "Sets roles allowed for commands. Syntax: `&setroles [cmd] [role]`"),
         ("kick", "Kicks a member. Syntax: `&kick [member] [reason]`"),
         ("ban", "Bans a member. Syntax: `&ban [member] [reason]`"),
-        ("mute", "Mutes a member. Syntax: `&mute [member]`"),
+        ("mute", "Mutes a member. Syntax: `&mute @member <duration> <time_unit> <reason>`"),
         ("unmute", "Unmutes a member. Syntax: `&unmute [member]`"),
         ("addrole", "Adds a role. Syntax: `&addrole [member] [role]`"),
         ("removerole", "Removes a role. Syntax: `&removerole [member] [role]`"),
@@ -125,7 +147,7 @@ async def commands(ctx):
         ("status", "Shows bot status. Syntax: `&status`"),
         ("ping", "Shows ping. Syntax: `&ping`"),
         ("time", "Shows time. Syntax: `&time`"),
-        ("owners", "Shows bot owners. Syntax: `&owners`"),
+        ("owner", "Shows bot owner and info. Syntax: `&owner`"),
         ("suggest", "Gives suggestion form. Syntax: `&suggest`")
     ]
 
@@ -137,29 +159,27 @@ async def commands(ctx):
 
     embed.set_thumbnail(url=client.user.avatar.url if client.user.avatar else None)
     embed.set_footer(text=f"Requested by {ctx.author}", icon_url=ctx.author.avatar.url)
-
-    # Music Commands
+    
     embed.add_field(
         name="🎵 Music Commands",
         value="\n".join(f"**`&{cmd}`** — {desc}" for cmd, desc in music_commands),
         inline=False
     )
-
-    # Moderation Commands
+    # Moderation Commands....................................................
     embed.add_field(
         name="⚙️ Moderation Commands",
         value="\n".join(f"**`&{cmd}`** — {desc}" for cmd, desc in moderation_commands),
         inline=False
     )
 
-    # Game Commands
+    # Game Commands...........................................................
     embed.add_field(
         name="🎮 Game Commands",
         value="\n".join(f"**`&{cmd}`** — {desc}" for cmd, desc in game_commands),
         inline=False
     )
 
-    # General Commands
+    # General Commands.........................................................
     embed.add_field(
         name="ℹ️ General Commands",
         value="\n".join(f"**`&{cmd}`** — {desc}" for cmd, desc in general_commands),
@@ -172,208 +192,15 @@ async def commands(ctx):
 #time command .......................................................
 @client.command()
 async def time(ctx):
-    current_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     await ctx.send(f'The current time is: {current_time}')
 
 #owners command ...................................................
 @client.command()
-async def owners(ctx):
-    await ctx.send("This is an initiative set by amateurs.")     
-
-#connect command .....................................................
-@client.command(pass_context=True)
-async def connect(ctx):
-    if (ctx.author.voice):
-        channel = ctx.message.author.voice.channel
-        await channel.connect()
-        await ctx.send("Connected")
-      
-    else:
-        await ctx.send("Connect to the voice channel first")
-
-#leave command .......................................................       
-@client.command(pass_context=True)
-async def leave(ctx):
-    if (ctx.voice_client):
-        await ctx.guild.voice_client.disconnect()
-        await ctx.send("Left the voice channel")
-    else:
-        await ctx.send("I am already disconnected")
-
-#pause command ...........................................................
-@client.command(pass_context=True)
-async def pause(ctx):
-    if (ctx.author.voice):
-      voice=discord.utils.get(client.voice_clients,guild=ctx.guild)
-      if voice.is_playing():
-         voice.pause()
-      else:
-         await ctx.send("The voice is already paused")
-    else:
-        await ctx.send('Please connect to voice channel first')
-        
-#stop command ............................................................
-@client.command(pass_context=True)
-async def stop(ctx):
-    if (ctx.author.voice):
-        voice=discord.utils.get(client.voice_clients,guild=ctx.guild)
-        voice.stop()
-        await ctx.send("The voice has been stopped") 
-    else:
-        await ctx.send("Please connect to the voice channel first")
-
-#resume command ..........................................................       
-@client.command(pass_context=True)
-async def resume(ctx):
-    voice=discord.utils.get(client.voice_clients,guild=ctx.guild)
-    if (ctx.author.voice):
-        if voice.is_paused():
-          voice.resume()
-        else:
-          await ctx.send("The voice is already running")  
-    else:
-        await ctx.send("Please connect to the voice channel first")
-
-#play command.............................................
-@client.command()
-async def play(ctx, playlist_name: str = None, song_number: int = None):
-    global current_song_index
-
-    voice_channel = ctx.author.voice.channel
-
-    voice_client = ctx.voice_client
-    if voice_client:
-        await voice_client.disconnect()
-
-    voice_client = await voice_channel.connect()
-
-    if playlist_name:
-        if playlist_name.lower() in playlists:
-            selected_playlist = playlists[playlist_name.lower()]
-
-            if song_number is not None and 1 <= song_number <= len(selected_playlist):
-                song_index = song_number - 1  # Adjust for 0-based indexing
-                source = os.path.join(songs_folder, selected_playlist[song_index])
-                voice_client.play(discord.FFmpegPCMAudio(source))
-                await ctx.send(f"Now playing: {selected_playlist[song_index]}")
-            else:
-                await ctx.send("Invalid song number. Please specify a valid song number.")
-        else:
-            await ctx.send(f"The '{playlist_name}' playlist does not exist. Use the &createplaylist command to create it.")
-    else:
-        await ctx.send("Please provide a playlist name as input.")
-
-
-#create playlist..........................................
-@client.command()
-async def createplaylist(ctx, playlist_name: str):
-    if playlist_name.lower() not in playlists:
-        playlists[playlist_name.lower()] = []
-        current_song_index[playlist_name.lower()] = 0
-        await ctx.send(f"Playlist '{playlist_name}' created.")
-        save_playlists()
-    else:
-        await ctx.send(f"The playlist '{playlist_name}' already exists.")
-
-#add songs to playlist.........................
-@client.command()
-async def add(ctx, playlist_name: str, *, song_choice: str):
-    if playlist_name.lower() not in playlists:
-        await ctx.send(f"The playlist '{playlist_name}' does not exist. Use the &createplaylist command to create it.")
-        return
-
-    songs = [f for f in os.listdir(songs_folder) if f.endswith('.mp3')]
-    if not songs:
-        await ctx.send("No songs found in the 'songs' folder.")
-        return
-
-    song_choice = song_choice.lower()
-    matching_songs = [song for song in songs if song_choice in song.lower()]
-
-    if not matching_songs:
-        await ctx.send(f"No songs matching '{song_choice}' found in the 'songs' folder.")
-        return
-
-    playlists[playlist_name.lower()].extend(matching_songs)
-    await ctx.send(f"{len(matching_songs)} song(s) added to the '{playlist_name}' playlist.")
-    save_playlists()    
-
-#Showplaylist songs ...........................................
-@client.command()
-async def showplaylist(ctx, playlist_name: str):
-    if playlist_name.lower() not in playlists:
-        await ctx.send(f"The playlist '{playlist_name}' does not exist. Use the &createplaylist command to create it.")
-        return
-
-    selected_playlist = playlists[playlist_name.lower()]
-
-    if not selected_playlist:
-        await ctx.send(f"The '{playlist_name}' playlist is empty. Use the &add command to add songs to it.")
-        return
-
-    await ctx.send(f"Current Playlist '{playlist_name}':")
-    for i, song in enumerate(selected_playlist, start=1):
-        await ctx.send(f"{i}. {song}")
-
-#Delete playlists.......................
-@client.command()
-async def deleteplaylist(ctx, playlist_name: str):
-    if playlist_name.lower() in playlists:
-        del playlists[playlist_name.lower()]
-        await ctx.send(f"Playlist '{playlist_name}' deleted.")
-        save_playlists()
-    else:
-        await ctx.send(f"The playlist '{playlist_name}' does not exist.")
-
-#Show all playlists..........................
-@client.command()
-async def showplaylists(ctx):
-    if not playlists:
-        await ctx.send("No playlists found.")
-        return
-
-    playlist_names = list(playlists.keys())
-    await ctx.send(f"Total playlists: {len(playlist_names)}")
-    await ctx.send("Playlist names:")
-    await ctx.send("\n".join(playlist_names))
-
-#Total songs available.................
-@client.command()
-async def showallsongs(ctx):
-    songs = [f for f in os.listdir(songs_folder) if f.endswith('.mp3')]
-    total_songs = len(songs)
-    
-    if total_songs > 0:
-        song_list = "\n".join(songs)
-        await ctx.send(f"Total songs in the 'songs' folder: {total_songs}\nSongs:\n{song_list}")
-    else:
-        await ctx.send("No songs found in the 'songs' folder.")
-
-#edit playlist......................
-@client.command()
-async def deletesong(ctx, playlist_name: str, song_number: int=None):
-    if not playlist_name:
-        await ctx.send("Please provide a playlist name.")
-        return
-
-    if not song_number:
-        await ctx.send("Please specify the song number to remove.")
-        return
-
-    if playlist_name.lower() not in playlists:
-        await ctx.send(f"The '{playlist_name}' playlist does not exist.")
-        return
-
-    selected_playlist = playlists[playlist_name.lower()]
-
-    if 1 <= song_number <= len(selected_playlist):
-        song_index = song_number - 1
-        removed_song = selected_playlist.pop(song_index)
-        save_playlists()  
-
-        await ctx.send(f"Removed song '{removed_song}' from the '{playlist_name}' playlist.")
-    else:
-        await ctx.send("Invalid song number. Please specify a valid song number.")
+async def owner(ctx):
+    await ctx.send(f"Good day to you {ctx.author.mention}. My name is Kartik and I got an glorious opportunity to build this bot. This initiative was "
+                    "starting back in 2021 as a basic truth and dare bot but now with new technologies evolving , I thought to take this onto a new level using and trying to use AI and ML in the bot "
+                    "Please check the status for more info about the bot.")     
 
 #Truth game .................................................(Upgrade it on a daily basis)
 @client.command(pass_context=True)
@@ -415,7 +242,7 @@ async def dare(ctx):
 @client.command()
 async def suggest(ctx):
    google_form_link=''
-   await ctx.send(f"Please fill out the suggestion form here: {google_form_link}")
+   await ctx.send("Please fill out the suggestion form here: https://forms.gle/3t1G1gD6ZY8QPMrc9")
 
 # For moderation.................................................
 allowed_roles = {
@@ -432,7 +259,7 @@ def has_allowed_role(ctx, command):
     allowed = allowed_roles.get(command, [])
     return ctx.author == creator_role or any(role.id in allowed for role in ctx.author.roles)
 
-# Set roles command
+# Set roles command.........................................................
 @client.command()
 async def setroles(ctx, command: str, role: discord.Role, *roles_to_add: discord.Role):
     if ctx.author != ctx.guild.owner:
@@ -447,7 +274,7 @@ async def setroles(ctx, command: str, role: discord.Role, *roles_to_add: discord
     allowed_roles[command][role.name] = [r.id for r in roles_to_add]
     await ctx.send(f"Roles allowed to use {command} command have been set to: {', '.join(role.name for role in roles_to_add)}")
 
-# Kick command
+# Kick command..............................................................
 @client.command()
 async def kick(ctx, member: discord.Member, *, reason=None):
     if not has_allowed_role(ctx, "kick"):
@@ -461,7 +288,7 @@ async def kick(ctx, member: discord.Member, *, reason=None):
     await member.kick(reason=reason)
     await ctx.send(f"{member.mention} has been kicked from the server. Reason: {reason}")
 
-# Ban command
+# Ban command.................................................................
 @client.command()
 async def ban(ctx, member: discord.Member, *, reason=None):
     if not has_allowed_role(ctx, "ban"):
@@ -475,17 +302,22 @@ async def ban(ctx, member: discord.Member, *, reason=None):
     await member.ban(reason=reason)
     await ctx.send(f"{member.mention} has been banned from the server. Reason: {reason}")
 
-# Mute command
+# Mute command........................................................
 @client.command()
-async def mute(ctx, member: discord.Member, duration: int, time_unit: str, *, reason=None):
+async def mute(ctx, member: discord.Member, duration: int = None, time_unit: str = None, *, reason=None):
     if not has_allowed_role(ctx, "mute"):
-        await ctx.send("You don't have permission to use this command.")
+        await ctx.send("❌ You don't have permission to use this command.")
+        return
+
+    if duration is None or time_unit is None:
+        await ctx.send("⚠️ Usage: `&mute @member <duration> <time_unit> <reason>`\nExample: `&mute @user 10 minutes spamming`")
         return
 
     if reason is None:
-        await ctx.send("Please provide a reason for muting the member.")
+        await ctx.send("⚠️ Please provide a reason for muting the member.")
         return
 
+    # Find or create Muted role...................................................
     mute_role = discord.utils.get(ctx.guild.roles, name="Muted")
     if not mute_role:
         try:
@@ -493,33 +325,38 @@ async def mute(ctx, member: discord.Member, duration: int, time_unit: str, *, re
             for channel in ctx.guild.channels:
                 await channel.set_permissions(mute_role, send_messages=False)
         except discord.Forbidden:
-            await ctx.send("I don't have the permissions to create roles.")
+            await ctx.send("❌ I don't have the permissions to create roles.")
             return
-        await member.add_roles(mute_role)
-        await ctx.send(f"{member.mention} has been muted for {duration} {time_unit}. Reason: {reason}")
+
+    # Apply mute...................................................................
+    await member.add_roles(mute_role)
+    await ctx.send(f"🔇 {member.mention} has been muted for {duration} {time_unit}. Reason: {reason}")
+
+    # Schedule unmute..............................................................
+    try:
         await asyncio.sleep(convert_to_seconds(duration, time_unit))
-        await member.remove_roles(mute_role)
-        await ctx.send(f"{member.mention} has been unmuted after {duration} {time_unit}.")
-    else:
-        await member.add_roles(mute_role)
-        await ctx.send(f"{member.mention} has been muted for {duration} {time_unit}. Reason: {reason}")
-        await asyncio.sleep(convert_to_seconds(duration, time_unit))
-        await member.remove_roles(mute_role)
-        await ctx.send(f"{member.mention} has been unmuted after {duration} {time_unit}.")
+    except ValueError:
+        await ctx.send("⚠️ Invalid time unit. Please use `seconds`, `minutes`, `hours`, or `days`.")
+        return
+
+    await member.remove_roles(mute_role)
+    await ctx.send(f"✅ {member.mention} has been unmuted after {duration} {time_unit}.")
+
 
 def convert_to_seconds(duration, time_unit):
-    if time_unit.lower() == "seconds":
+    if time_unit.lower() in ["second", "seconds"]:
         return duration
-    elif time_unit.lower() == "minutes":
+    elif time_unit.lower() in ["minute", "minutes"]:
         return duration * 60
-    elif time_unit.lower() == "hours":
+    elif time_unit.lower() in ["hour", "hours"]:
         return duration * 3600
-    elif time_unit.lower() == "days":
+    elif time_unit.lower() in ["day", "days"]:
         return duration * 86400
     else:
-        raise ValueError("Invalid time unit. Please use 'seconds', 'minutes', 'hours', or 'days'.")
+        raise ValueError("Invalid time unit")
+
         
-# Unmute command
+# Unmute command.........................................................................
 @client.command()
 async def unmute(ctx, member: discord.Member):
     if not has_allowed_role(ctx, "unmute"):
@@ -537,7 +374,7 @@ async def unmute(ctx, member: discord.Member):
     else:
         await ctx.send(f"{member.mention} is not muted.") 
 
-# Add role command
+# Add role command.......................................................................
 @client.command()
 async def addrole(ctx, member: discord.Member, role: discord.Role):
     if not has_allowed_role(ctx, "addrole"):
@@ -547,7 +384,7 @@ async def addrole(ctx, member: discord.Member, role: discord.Role):
     await member.add_roles(role)
     await ctx.send(f"Added role '{role.name}' to {member.mention}.")
 
-# Remove role command
+# Remove role command....................................................................
 @client.command()
 async def removerole(ctx, member: discord.Member, role: discord.Role):
     if not has_allowed_role(ctx, "removerole"):
@@ -608,17 +445,140 @@ async def remove_banned_word(ctx, word):
 async def on_disconnect():
     save_banned_words(banned_words_per_guild)
 
+WARNINGS_FILE = "warnings.json"
+
+# Load warnings from file......................................................................
+def load_warnings():
+    if os.path.exists(WARNINGS_FILE):
+        with open(WARNINGS_FILE, "r") as f:
+            return json.load(f)
+    return {}
+
+# Save warnings to file...........................................................................
+def save_warnings(data):
+    with open(WARNINGS_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+
+warnings = load_warnings()  
+
+def add_warning(guild_id, user_id):
+    guild_id = str(guild_id)
+    user_id = str(user_id)
+
+    if guild_id not in warnings:
+        warnings[guild_id] = {}
+    if user_id not in warnings[guild_id]:
+        warnings[guild_id][user_id] = 0
+
+    warnings[guild_id][user_id] += 1
+    save_warnings(warnings)
+
+    return warnings[guild_id][user_id]
+
+def reset_warnings(guild_id, user_id):
+    guild_id = str(guild_id)
+    user_id = str(user_id)
+    if guild_id in warnings and user_id in warnings[guild_id]:
+        warnings[guild_id][user_id] = 0
+        save_warnings(warnings)
+
 @client.event
 async def on_message(message):
-
     if message.author == client.user:
         return
 
     guild_id = message.guild.id
+    user_id = message.author.id
+
     if contains_banned_word(message.content, guild_id):
         await message.delete()
-        await message.channel.send(f"{message.author.mention} Watch your language! That's not allowed. :x: ")
+
+        warning_count = add_warning(guild_id, user_id)
+
+        if warning_count < 5:
+            await message.channel.send(
+                f"{message.author.mention} ⚠️ Warning {warning_count}/5: Watch your language!"
+            )
+        else:
+            reset_warnings(guild_id, user_id) 
+
+            mute_role = discord.utils.get(message.guild.roles, name="Muted")
+            if not mute_role:
+                try:
+                    mute_role = await message.guild.create_role(
+                        name="Muted", reason="Auto mute for bad language"
+                    )
+                    for channel in message.guild.channels:
+                        await channel.set_permissions(mute_role, send_messages=False)
+                except discord.Forbidden:
+                    await message.channel.send("❌ I don’t have permission to create/manage roles.")
+                    return
+
+            await message.author.add_roles(mute_role)
+            await message.channel.send(
+                f"🔇 {message.author.mention} has been muted for 1 day due to repeated violations."
+            )
+
+            await asyncio.sleep(86400)  
+            await message.author.remove_roles(mute_role)
+            await message.channel.send(
+                f"✅ {message.author.mention} has been unmuted after serving their 1-day mute."
+            )
 
     await client.process_commands(message)
-    
+
+@client.command(name="join")
+async def join(ctx):
+    if ctx.author.voice:
+        channel = ctx.author.voice.channel
+        await channel.connect()
+        await ctx.send(f"🎶 Joined {channel}.Order by by {ctx.author}")
+    else:
+        await ctx.send(f"❌{ctx.author}.You are not in a voice channel!")
+
+
+@client.command(name="leave")
+async def leave(ctx):
+    if ctx.voice_client:
+        await ctx.voice_client.disconnect()
+        await ctx.send(f"👋 Left the voice channel. Order by by {ctx.author}")
+    else:
+        await ctx.send("❌ I'm not in a voice channel.")
+
+
+@client.command(name="play")
+async def play(ctx, *, url):
+    async with ctx.typing():
+        player = await YTDLSource.from_url(url, loop=client.loop, stream=True)
+        ctx.voice_client.play(
+            player, after=lambda e: print(f"Player error: {e}") if e else None
+        )
+    await ctx.send(f"▶️ Now playing: **{player.title}** by {ctx.author}")
+
+
+@client.command(name="pause")
+async def pause(ctx):
+    if ctx.voice_client and ctx.voice_client.is_playing():
+        ctx.voice_client.pause()
+        await ctx.send(f"⏸ Paused by {ctx.author}.")
+    else:
+        await ctx.send("❌ Nothing is playing by {ctx.author}.")
+
+
+@client.command(name="resume")
+async def resume(ctx):
+    if ctx.voice_client and ctx.voice_client.is_paused():
+        ctx.voice_client.resume()
+        await ctx.send(f"▶️ Resumed by {ctx.author}.")
+    else:
+        await ctx.send("❌ Nothing is paused.")
+
+
+@client.command(name="stop")
+async def stop(ctx):
+    if ctx.voice_client:
+        ctx.voice_client.stop()
+        await ctx.send(f"⏹ Stopped by {ctx.author}.")
+    else:
+        await ctx.send("❌ I'm not playing anything.")
 client.run("MTE1NDc3MzM5MjEzODk2OTIxMA.GD5_PV.pYjce5iwJtDxC9L4te53qxq7L6-HFJYbWBEgw8")  #Important 
