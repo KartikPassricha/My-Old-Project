@@ -91,6 +91,12 @@ async def on_command_error(ctx, error):
     else:
         raise error
 
+async def disconnect_after(ctx, delay=60):
+    await asyncio.sleep(delay)
+    if ctx.voice_client and not ctx.voice_client.is_playing():
+        await ctx.voice_client.disconnect()
+        await ctx.send("👋 Left the voice channel due to inactivity.")
+
 #status command .................................................
 @client.command()
 async def status(ctx):
@@ -548,12 +554,16 @@ async def leave(ctx):
 
 @client.command(name="play")
 async def play(ctx, *, url):
+    if ctx.voice_client is None:
+        if ctx.author.voice: 
+            await ctx.author.voice.channel.connect()
+        else:
+            return await ctx.send("❌ You must be in a voice channel to use this command!")
+
     async with ctx.typing():
         player = await YTDLSource.from_url(url, loop=client.loop, stream=True)
-        ctx.voice_client.play(
-            player, after=lambda e: print(f"Player error: {e}") if e else None
-        )
-    await ctx.send(f"▶️ Now playing: **{player.title}** by {ctx.author}")
+        ctx.voice_client.play(player, after=lambda e: asyncio.run_coroutine_threadsafe(disconnect_after(ctx), client.loop))
+    await ctx.send(f"▶️ Now playing: **{player.title}**")
 
 
 @client.command(name="pause")
@@ -581,4 +591,5 @@ async def stop(ctx):
         await ctx.send(f"⏹ Stopped by {ctx.author}.")
     else:
         await ctx.send("❌ I'm not playing anything.")
+    
 client.run("MTE1NDc3MzM5MjEzODk2OTIxMA.GD5_PV.pYjce5iwJtDxC9L4te53qxq7L6-HFJYbWBEgw8")  #Important 
